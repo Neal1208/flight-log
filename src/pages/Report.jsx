@@ -29,25 +29,28 @@ function buildSummary(flights) {
   let flightDays = 0;
   let noFlyDays = 0;
   const reasonCount = {};
-
   flights.forEach((f) => {
-    const hasCourses = f.courses?.length > 0;
-    const hasReasons = f.reasons?.length > 0;
-    if (hasCourses) {
+    if (f.courses?.length > 0) {
       flightDays++;
-      f.courses.forEach((c) => {
-        totalHours += parseFloat(c.hours) || 0;
-      });
+      f.courses.forEach((c) => { totalHours += parseFloat(c.hours) || 0; });
     }
-    if (hasReasons) {
+    if (f.reasons?.length > 0) {
       noFlyDays++;
-      f.reasons.forEach((r) => {
-        reasonCount[r.type] = (reasonCount[r.type] || 0) + 1;
-      });
+      f.reasons.forEach((r) => { reasonCount[r.type] = (reasonCount[r.type] || 0) + 1; });
     }
   });
-
   return { totalHours, flightDays, noFlyDays, totalDays: flights.length, reasonCount };
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function Report() {
@@ -58,11 +61,19 @@ export default function Report() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  function doQuery(start, end) {
+  // downloadUrl holds { url, filename } for mobile tap-to-download
+  const [downloadUrl, setDownloadUrl] = useState(null);
+
+  function handleQuery() {
+    if (!startDate || !endDate) {
+      setMsg({ type: 'error', text: '请选择开始和结束日期' });
+      return;
+    }
     setLoading(true);
     setMsg(null);
+    setDownloadUrl(null);
     try {
-      const data = getFlightsInRange(start, end);
+      const data = getFlightsInRange(startDate, endDate);
       setFlights(data || []);
       if (!data || data.length === 0) {
         setMsg({ type: 'error', text: '该区间暂无数据' });
@@ -71,15 +82,6 @@ export default function Report() {
       setMsg({ type: 'error', text: '查询失败' });
     }
     setLoading(false);
-    return flights;
-  }
-
-  function handleQuery() {
-    if (!startDate || !endDate) {
-      setMsg({ type: 'error', text: '请选择开始和结束日期' });
-      return;
-    }
-    doQuery(startDate, endDate);
   }
 
   function ensureData() {
@@ -95,14 +97,13 @@ export default function Report() {
     const data = ensureData();
     const rows = buildReportRows(data);
     if (rows.length === 0) {
-      setMsg({ type: 'error', text: '没有数据可导出，请先填写日志' });
+      setMsg({ type: 'error', text: '没有数据可导出' });
       return;
     }
 
     const summary = buildSummary(data);
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: 明细
     const sheetData = [
       ['飞行日志报表'],
       [`日期区间：${startDate} 至 ${endDate}`],
@@ -118,11 +119,9 @@ export default function Report() {
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     ws['!cols'] = [{ wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 22 }];
-    // Merge title row
     ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
     XLSX.utils.book_append_sheet(wb, ws, '飞行日志');
 
-    // Sheet 2: 原因统计
     if (Object.keys(summary.reasonCount).length > 0) {
       const reasonData = [['未飞行原因', '次数']];
       Object.entries(summary.reasonCount).forEach(([k, v]) => reasonData.push([k, v]));
@@ -131,49 +130,51 @@ export default function Report() {
       XLSX.utils.book_append_sheet(wb, ws2, '原因统计');
     }
 
-    XLSX.writeFile(wb, `飞行日志报表_${startDate}_至_${endDate}.xlsx`);
-    setMsg({ type: 'success', text: 'Excel 报表已下载' });
+    const filename = `飞行日志报表_${startDate}_至_${endDate}.xlsx`;
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+    // Show download link for mobile
+    const url = URL.createObjectURL(blob);
+    setDownloadUrl({ url, filename });
+    triggerDownload(blob, filename);
+    setMsg({ type: 'success', text: 'Excel 已生成，如未自动下载请点击下方按钮' });
   }
 
   function handleExportPPT() {
     const data = ensureData();
     const rows = buildReportRows(data);
     if (rows.length === 0) {
-      setMsg({ type: 'error', text: '没有数据可导出，请先填写日志' });
+      setMsg({ type: 'error', text: '没有数据可导出' });
       return;
     }
 
     const summary = buildSummary(data);
     const ppt = new PptxGenJS();
 
-    // Slide 1: 概览
+    // Slide 1: Overview
     const s1 = ppt.addSlide();
     s1.addText('飞行日志报表', { x: 0.5, y: 0.2, w: '90%', fontSize: 22, bold: true, color: '1a1a2e' });
     s1.addText(`${startDate} 至 ${endDate}`, { x: 0.5, y: 0.8, w: '90%', fontSize: 12, color: '666666' });
     s1.addShape(ppt.ShapeType.rect, { x: 0.5, y: 1.0, w: 3.8, h: 0.02, fill: { color: '1a1a2e' } });
-
     s1.addText([
       { text: '飞行天数：', options: { bold: true, fontSize: 13, color: '217346' } },
       { text: `${summary.flightDays} 天`, options: { fontSize: 13 } },
     ], { x: 0.5, y: 1.3, w: '90%' });
-
     s1.addText([
       { text: '总飞行时长：', options: { bold: true, fontSize: 13, color: '217346' } },
       { text: `${summary.totalHours.toFixed(1)} 小时`, options: { fontSize: 13 } },
     ], { x: 0.5, y: 1.7, w: '90%' });
-
     s1.addText([
       { text: '未飞行天数：', options: { bold: true, fontSize: 13, color: 'd24726' } },
       { text: `${summary.noFlyDays} 天`, options: { fontSize: 13 } },
     ], { x: 0.5, y: 2.1, w: '90%' });
 
-    // Slide 2: 明细表
+    // Slide 2: Detail table
     const s2 = ppt.addSlide();
     s2.addText('飞行记录明细', { x: 0.5, y: 0.2, w: '90%', fontSize: 18, bold: true, color: '1a1a2e' });
-
     const headerOpts = { bold: true, fontSize: 9, fill: { color: '1a1a2e' }, color: 'FFFFFF', align: 'center' };
     const cellOpts = { fontSize: 9, align: 'center' };
-
     const tableData = [
       [
         { text: '日期', options: headerOpts },
@@ -190,7 +191,6 @@ export default function Report() {
         { text: r.note || '-', options: cellOpts },
       ]),
     ];
-
     s2.addTable(tableData, {
       x: 0.3, y: 0.7, w: 9.4,
       border: { type: 'solid', pt: 0.5, color: 'CCCCCC' },
@@ -198,22 +198,16 @@ export default function Report() {
       autoPage: true,
     });
 
-    // Slide 3: 原因统计
+    // Slide 3: Reason stats
     if (Object.keys(summary.reasonCount).length > 0) {
       const s3 = ppt.addSlide();
       s3.addText('未飞行原因统计', { x: 0.5, y: 0.2, w: '90%', fontSize: 18, bold: true, color: '1a1a2e' });
-
       const reasonData = [
-        [
-          { text: '原因类型', options: headerOpts },
-          { text: '次数', options: headerOpts },
-        ],
+        [{ text: '原因类型', options: headerOpts }, { text: '次数', options: headerOpts }],
         ...Object.entries(summary.reasonCount).map(([k, v]) => [
-          { text: k, options: cellOpts },
-          { text: String(v), options: cellOpts },
+          { text: k, options: cellOpts }, { text: String(v), options: cellOpts },
         ]),
       ];
-
       s3.addTable(reasonData, {
         x: 0.5, y: 0.7, w: 5,
         border: { type: 'solid', pt: 0.5, color: 'CCCCCC' },
@@ -221,14 +215,23 @@ export default function Report() {
       });
     }
 
-    ppt.writeFile({ fileName: `飞行日志报表_${startDate}_至_${endDate}.pptx` });
-    setMsg({ type: 'success', text: 'PPT 报表已下载' });
+    const filename = `飞行日志报表_${startDate}_至_${endDate}.pptx`;
+    ppt.writeFile({ fileName: filename })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        setDownloadUrl({ url, filename });
+        triggerDownload(blob, filename);
+        setMsg({ type: 'success', text: 'PPT 已生成，如未自动下载请点击下方按钮' });
+      })
+      .catch(() => {
+        setMsg({ type: 'error', text: 'PPT 生成失败，请重试' });
+      });
   }
 
   const summary = flights.length > 0 ? buildSummary(flights) : null;
 
   return (
-    <div className="min-h-dvh bg-bg pb-16">
+    <div className="min-h-dvh bg-bg pb-20">
       <div className="bg-primary text-white px-4 py-3 sticky top-0 z-10">
         <h1 className="font-semibold">📊 报表导出</h1>
       </div>
@@ -238,10 +241,10 @@ export default function Report() {
         <h2 className="font-semibold text-text mb-3 text-[15px]">选择日期区间</h2>
         <div className="flex gap-2 items-center">
           <input type="date" className="flex-1 text-center px-3 py-2.5 border border-border rounded-lg text-sm outline-none focus:border-accent"
-            value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            value={startDate} onChange={(e) => { setStartDate(e.target.value); setDownloadUrl(null); }} />
           <span className="text-text-muted text-sm">至</span>
           <input type="date" className="flex-1 text-center px-3 py-2.5 border border-border rounded-lg text-sm outline-none focus:border-accent"
-            value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            value={endDate} onChange={(e) => { setEndDate(e.target.value); setDownloadUrl(null); }} />
         </div>
         <button onClick={handleQuery} disabled={loading}
           className="w-full mt-3 py-2.5 bg-accent text-white rounded-lg font-semibold text-sm disabled:opacity-60">
@@ -253,6 +256,22 @@ export default function Report() {
         <div className={`mx-4 mt-2 text-xs text-center py-2 rounded-lg ${
           msg.type === 'success' ? 'bg-green-50 text-success' : 'bg-red-50 text-danger'
         }`}>{msg.text}</div>
+      )}
+
+      {/* Mobile download button */}
+      {downloadUrl && (
+        <div className="mx-4 mt-3">
+          <a
+            href={downloadUrl.url}
+            download={downloadUrl.filename}
+            className="block w-full py-3 bg-accent text-white rounded-lg font-semibold text-center text-sm no-underline"
+          >
+            👆 点击此处下载 {downloadUrl.filename.endsWith('.xlsx') ? 'Excel' : 'PPT'} 文件
+          </a>
+          <p className="text-[11px] text-text-muted text-center mt-1">
+            如未自动下载，请点击上方按钮
+          </p>
+        </div>
       )}
 
       {/* Summary Cards */}
@@ -287,7 +306,7 @@ export default function Report() {
         </div>
       )}
 
-      {/* Export Buttons - always visible when summary exists */}
+      {/* Export Buttons */}
       {summary && (
         <div className="px-4 mt-3 flex gap-3">
           <button onClick={handleExportExcel}
