@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFlight, saveFlight } from '../lib/storage';
 import Calendar from '../components/Calendar';
@@ -6,82 +6,64 @@ import CourseEditor from '../components/CourseEditor';
 import ReasonSelector from '../components/ReasonSelector';
 import VoiceInput from '../components/VoiceInput';
 
-function todayStr() {
-  const d = new Date();
+function d2s(date) {
+  const d = date instanceof Date ? date : new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function loadDate(date) {
-  const data = getFlight(date);
-  if (data) {
-    return {
-      courses: data.courses || [],
-      reasons: data.reasons || [],
-    };
-  }
-  return { courses: [], reasons: [] };
 }
 
 export default function Logbook() {
   const navigate = useNavigate();
-  const [dateKey, setDateKey] = useState(todayStr);
-  const [courses, setCourses] = useState(() => loadDate(new Date()).courses);
-  const [reasons, setReasons] = useState(() => loadDate(new Date()).reasons);
+  const today = new Date();
+  const todayData = getFlight(today);
+  const [dateStr, setDateStr] = useState(d2s(today));
+  const [courses, setCourses] = useState(todayData?.courses || []);
+  const [reasons, setReasons] = useState(todayData?.reasons || []);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const renderKey = useRef(0);
 
   function handleDateChange(date) {
-    const key = typeof date === 'string' ? date : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    setDateKey(key);
+    const key = d2s(date);
+    renderKey.current += 1;
+    setDateStr(key);
     setMsg(null);
-    // Synchronously load data for the new date
-    const { courses: c, reasons: r } = loadDate(date);
-    setCourses(c);
-    setReasons(r);
+    const data = getFlight(date);
+    setCourses(data ? (data.courses || []) : []);
+    setReasons(data ? (data.reasons || []) : []);
   }
 
   function handleSave() {
     setSaving(true);
     setMsg(null);
     try {
-      // Parse dateKey back to Date for saving
-      const parts = dateKey.split('-');
-      const d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-      saveFlight(d, { courses, reasons });
+      saveFlight(dateStr, { courses, reasons });
       setMsg({ type: 'success', text: '保存成功' });
     } catch (err) {
-      setMsg({ type: 'error', text: err.message || '保存失败' });
+      setMsg({ type: 'error', text: '保存失败' });
     }
     setSaving(false);
     setTimeout(() => setMsg(null), 2000);
   }
 
+  const ck = `${dateStr}-r${renderKey.current}`;
+
   return (
     <div className="min-h-dvh bg-bg pb-16">
-      {/* Header */}
       <div className="bg-primary text-white px-4 py-3 sticky top-0 z-10">
         <h1 className="font-semibold">✈️ 飞行日志</h1>
       </div>
 
-      {/* Calendar */}
-      <Calendar selected={new Date(dateKey)} onChange={handleDateChange} />
+      <Calendar selected={new Date(dateStr + 'T00:00:00')} onChange={handleDateChange} />
 
-      {/* Course Editor */}
-      <CourseEditor key={dateKey} courses={courses} onChange={setCourses} />
+      <CourseEditor key={ck} courses={courses} onChange={setCourses} />
+      <ReasonSelector key={ck} reasons={reasons} onChange={setReasons} />
 
-      {/* Reason Selector */}
-      <ReasonSelector key={dateKey} reasons={reasons} onChange={setReasons} />
-
-      {/* Message */}
       {msg && (
         <div className={`mx-4 mt-2 text-xs text-center py-2 rounded-lg ${
           msg.type === 'success' ? 'bg-green-50 text-success' : 'bg-red-50 text-danger'
-        }`}>
-          {msg.text}
-        </div>
+        }`}>{msg.text}</div>
       )}
 
-      {/* Voice + Save */}
       <div className="px-4 py-2 flex gap-2 items-center">
         <VoiceInput />
         <button
@@ -93,7 +75,6 @@ export default function Logbook() {
         </button>
       </div>
 
-      {/* Bottom Nav */}
       <div className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-card border-t border-border flex justify-around py-3 text-xs text-text-muted">
         <span className="text-primary font-semibold">📅 日志</span>
         <span className="cursor-pointer" onClick={() => navigate('/report')}>📊 报表</span>
