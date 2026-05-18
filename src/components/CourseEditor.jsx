@@ -1,62 +1,56 @@
 import { useState } from 'react';
 
-const defaultCourse = { name: '', hours: '' };
-
 export default function CourseEditor({ courses, onChange }) {
-  const [inputName, setInputName] = useState('');
-  const [inputHours, setInputHours] = useState('');
+  const [name, setName] = useState('');
+  const [hours, setHours] = useState('');
 
-  function addCourse() {
-    if (!inputName.trim() && !inputHours.trim()) return;
-    onChange([...courses, { name: inputName.trim(), hours: inputHours.trim() }]);
-    setInputName('');
-    setInputHours('');
+  function add() {
+    const n = name.trim();
+    const h = hours.trim();
+    if (!n && !h) return;
+    onChange([...courses, { name: n, hours: h }]);
+    setName('');
+    setHours('');
   }
 
-  function removeCourse(index) {
-    const next = courses.filter((_, i) => i !== index);
-    onChange(next);
+  function remove(i) {
+    onChange(courses.filter((_, j) => j !== i));
   }
 
   return (
     <div className="bg-card mx-4 mt-3 rounded-xl p-4">
       <h2 className="font-semibold text-text mb-3 text-[15px]">📋 飞行大纲课程</h2>
 
-      {courses.map((c, i) => (
-        <div key={i} className="flex gap-2 items-center mb-2 text-sm text-text">
-          <span className="flex-1">{c.name || '未填科目'}</span>
-          <span>{c.hours ? `${c.hours}h` : '-'}</span>
-          <button
-            onClick={() => removeCourse(i)}
-            className="text-danger text-xs px-1"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
+      {courses.length === 0 ? (
+        <p className="text-xs text-text-muted mb-2">暂无课程，请在下方添加</p>
+      ) : (
+        courses.map((c, i) => (
+          <div key={i} className="flex gap-2 items-center mb-2 text-sm text-text bg-bg rounded-lg px-3 py-2">
+            <span className="flex-1">{c.name || '未填科目'}</span>
+            <span className="text-text-secondary">{c.hours ? `${c.hours}h` : '-'}</span>
+            <button onClick={() => remove(i)} className="text-danger text-sm px-1">&times;</button>
+          </div>
+        ))
+      )}
 
-      <div className="flex gap-2 items-center mt-3">
+      <div className="flex gap-2 items-center pt-1">
         <input
           placeholder="科目名称"
-          className="flex-[2] px-2 py-2 border border-border rounded-md text-sm outline-none focus:border-accent"
-          value={inputName}
-          onChange={(e) => setInputName(e.target.value)}
-          id="courseNameInput"
+          className="flex-[2] px-2 py-2 border border-border rounded-md text-sm outline-none focus:border-accent bg-white"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
         />
         <input
           placeholder="时长"
-          className="flex-1 px-2 py-2 border border-border rounded-md text-sm outline-none focus:border-accent"
-          value={inputHours}
-          onChange={(e) => setInputHours(e.target.value)}
-          id="courseHoursInput"
+          className="w-14 px-2 py-2 border border-border rounded-md text-sm outline-none focus:border-accent bg-white"
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
           type="number"
           step="0.1"
+          min="0"
         />
         <span className="text-xs text-text-muted">h</span>
-        <button
-          onClick={addCourse}
-          className="text-accent text-sm px-2 py-2 border border-dashed border-accent rounded-md"
-        >
+        <button onClick={add} className="shrink-0 text-accent text-sm px-2 py-2 border border-dashed border-accent rounded-md whitespace-nowrap">
           + 添加
         </button>
       </div>
