@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFlight, saveFlight } from '../lib/storage';
 import Calendar from '../components/Calendar';
@@ -6,43 +6,48 @@ import CourseEditor from '../components/CourseEditor';
 import ReasonSelector from '../components/ReasonSelector';
 import VoiceInput from '../components/VoiceInput';
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function loadDate(date) {
+  const data = getFlight(date);
+  if (data) {
+    return {
+      courses: data.courses || [],
+      reasons: data.reasons || [],
+    };
+  }
+  return { courses: [], reasons: [] };
+}
+
 export default function Logbook() {
   const navigate = useNavigate();
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [courses, setCourses] = useState([]);
-  const [reasons, setReasons] = useState([]);
+  const [dateKey, setDateKey] = useState(todayStr);
+  const [courses, setCourses] = useState(() => loadDate(new Date()).courses);
+  const [reasons, setReasons] = useState(() => loadDate(new Date()).reasons);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  const loadFlight = useCallback((date) => {
+  function handleDateChange(date) {
+    const key = typeof date === 'string' ? date : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    setDateKey(key);
     setMsg(null);
-    setLoading(true);
-    try {
-      const data = getFlight(date);
-      if (data) {
-        setCourses(data.courses || []);
-        setReasons(data.reasons || []);
-      } else {
-        setCourses([]);
-        setReasons([]);
-      }
-    } catch {
-      setCourses([]);
-      setReasons([]);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadFlight(selectedDate);
-  }, [selectedDate, loadFlight]);
+    // Synchronously load data for the new date
+    const { courses: c, reasons: r } = loadDate(date);
+    setCourses(c);
+    setReasons(r);
+  }
 
   function handleSave() {
     setSaving(true);
     setMsg(null);
     try {
-      saveFlight(selectedDate, { courses, reasons });
+      // Parse dateKey back to Date for saving
+      const parts = dateKey.split('-');
+      const d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+      saveFlight(d, { courses, reasons });
       setMsg({ type: 'success', text: '保存成功' });
     } catch (err) {
       setMsg({ type: 'error', text: err.message || '保存失败' });
@@ -59,19 +64,13 @@ export default function Logbook() {
       </div>
 
       {/* Calendar */}
-      <Calendar selected={selectedDate} onChange={setSelectedDate} />
+      <Calendar selected={new Date(dateKey)} onChange={handleDateChange} />
 
       {/* Course Editor */}
-      {loading ? (
-        <div className="bg-card mx-4 mt-3 rounded-xl p-4 text-center text-text-muted text-sm">加载中...</div>
-      ) : (
-        <CourseEditor key={selectedDate.toISOString()} courses={courses} onChange={setCourses} />
-      )}
+      <CourseEditor key={dateKey} courses={courses} onChange={setCourses} />
 
       {/* Reason Selector */}
-      {!loading && (
-        <ReasonSelector key={selectedDate.toISOString()} reasons={reasons} onChange={setReasons} />
-      )}
+      <ReasonSelector key={dateKey} reasons={reasons} onChange={setReasons} />
 
       {/* Message */}
       {msg && (
@@ -87,7 +86,7 @@ export default function Logbook() {
         <VoiceInput />
         <button
           onClick={handleSave}
-          disabled={saving || loading}
+          disabled={saving}
           className="flex-1 py-3 bg-primary text-white rounded-lg font-semibold disabled:opacity-60"
         >
           {saving ? '保存中...' : '💾 保存'}
