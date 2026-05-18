@@ -20,16 +20,16 @@ export default function Logbook() {
   const [reasons, setReasons] = useState(todayData?.reasons || []);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
-  const renderKey = useRef(0);
+  const [version, setVersion] = useState(0);
 
   function handleDateChange(date) {
     const key = d2s(date);
-    renderKey.current += 1;
-    setDateStr(key);
-    setMsg(null);
     const data = getFlight(date);
+    setDateStr(key);
     setCourses(data ? (data.courses || []) : []);
     setReasons(data ? (data.reasons || []) : []);
+    setVersion((v) => v + 1);
+    setMsg(null);
   }
 
   function handleSave() {
@@ -38,14 +38,12 @@ export default function Logbook() {
     try {
       saveFlight(dateStr, { courses, reasons });
       setMsg({ type: 'success', text: '保存成功' });
-    } catch (err) {
+    } catch {
       setMsg({ type: 'error', text: '保存失败' });
     }
     setSaving(false);
     setTimeout(() => setMsg(null), 2000);
   }
-
-  const ck = `${dateStr}-r${renderKey.current}`;
 
   return (
     <div className="min-h-dvh bg-bg pb-16">
@@ -55,8 +53,11 @@ export default function Logbook() {
 
       <Calendar selected={new Date(dateStr + 'T00:00:00')} onChange={handleDateChange} />
 
-      <CourseEditor key={ck} courses={courses} onChange={setCourses} />
-      <ReasonSelector key={ck} reasons={reasons} onChange={setReasons} />
+      {/* Single wrapper with unique key per date change */}
+      <div key={`${dateStr}-v${version}`}>
+        <CourseEditor courses={courses} onChange={setCourses} />
+        <ReasonSelector reasons={reasons} onChange={setReasons} />
+      </div>
 
       {msg && (
         <div className={`mx-4 mt-2 text-xs text-center py-2 rounded-lg ${
