@@ -65,12 +65,12 @@ export default function Logbook() {
       {loading ? (
         <div className="bg-card mx-4 mt-3 rounded-xl p-4 text-center text-text-muted text-sm">加载中...</div>
       ) : (
-        <CourseEditor courses={courses} onChange={setCourses} />
+        <CourseEditor key={selectedDate.toISOString()} courses={courses} onChange={setCourses} />
       )}
 
       {/* Reason Selector */}
       {!loading && (
-        <ReasonSelector reasons={reasons} onChange={setReasons} />
+        <ReasonSelector key={selectedDate.toISOString()} reasons={reasons} onChange={setReasons} />
       )}
 
       {/* Message */}
